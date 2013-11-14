@@ -13,7 +13,7 @@ use File::Basename;
 use List::Util qw/shuffle/;
 use utf8;
 
-our $VERSION = '0.70';
+our $VERSION = '1.00';
 
 has content_file => (
     is => 'ro',
@@ -73,13 +73,14 @@ has fh       => (
     },
 );
 
-has retry_interval => is => 'rw', default => sub { 3 };
+has retry_interval => is => 'rw', default => sub { 10 };
 has max_retries => is => 'rw', default => sub { 5 };
 has seg_size    => is => 'rw', default => sub { 1 * 1024 * 1024 };
 has timeout     => is => 'rw', default => sub { 60 };
 has recurse     => is => 'rw', default => sub { 6 }; 
 has headers      => is => 'rw', default => sub {{}};
 has tasks       => is => 'rw', default => sub { [] };
+has error       => is => 'rw', default => sub {};
 has max_per_host  => is => 'rw', default => sub { 8 };
 
 sub BUILD {
@@ -93,14 +94,15 @@ sub get_file_length {
 
     my ($len, $hdr, $body);
     my $cv = AE::cv {
-        if ( $len ) {
-            $cb->($len, $hdr) 
+	    if ($len) {
+        	$cb->($len, $hdr); 
+	        return;
+	    }
+	    if ($self->error) {
+	        $self->on_error->($self->error);
+	        return;
         }
-        else{
-            my $status = $hdr->{Status};
-            $hdr ? $self->on_error->("连接失败, 响应:". $status ? $status : '无') 
-                    : $self->on_error->("远程地址没有响应.");
-        }
+	    $self->on_error->("没错误,也没长度");
     };
 
     my $fetch_len; $fetch_len = sub {
@@ -113,12 +115,17 @@ sub get_file_length {
                 ($body, $hdr) = @_;
                 undef $ev;
                 if ($retry > $self->max_retries) {
-                    $self->on_error->("连接失败, 响应 $hdr->{Status}, 内容 $body.");
-                    $cv->end;
-                    return;
+		            my $msg = sprintf("连接失败, 响应 %s, 内容 %s.", 
+			        	$hdr->{Status} ? $hdr->{Status} : '500', 
+			        	$body ? $body : "无"
+		            );
+                    $self->error($msg);
+		            $cv->send;
+		            return;
                 }
                 if ($hdr->{Status} =~ /^2/) {
                     $len = $hdr->{'content-length'};
+                    $cv->end;
                 }
                 else {
                     my $w;$w = AE::timer( $self->retry_interval, 0, sub {
@@ -126,7 +133,6 @@ sub get_file_length {
                         undef $w;
                     });
                 }
-                $cv->end;
             };
     };
     $cv->begin;
@@ -144,8 +150,14 @@ sub multi_get_file  {
         # 用于做事件同步
         my $cv = AE::cv { 
             my $cv = shift;
-            $self->move_to;
-            $self->on_finish->($self->size);
+	        if ($self->error) {
+		        $self->clean;
+	        	$self->on_error->($self->error);
+	        }
+	        else {
+            	$self->move_to;
+            	$self->on_finish->($self->size);
+	        }
         };
 
         # 事件开始, 但这个回调会在最后才调用.
@@ -206,14 +218,12 @@ sub fetch {
             on_body => $self->on_body($chunk),
             sub {
                 my ($hdl, $hdr) = @_;
-
                 my $status = $hdr->{Status};
-
                 undef $ev;
-
                 if ( $retry > $self->max_retries ) {
-                    $self->on_error->("地址 $url 的块 $range->{chunk} 范围 bytes=$ofs-$tail 下载失败");
-                    $cv->end;
+                    $self->error("地址 $url 的块 $range->{chunk} 范围 bytes=$ofs-$tail 下载失败");
+                    $cv->send;
+                    return;
                 }
 
                 if ($status == 200 || $status == 206 || $status == 416) {
@@ -317,6 +327,14 @@ sub move_to {
     File::Copy::copy( $self->fh->filename, $self->content_file )
           or die "Failed to rename $self->fh->filename to $self->content_file: $!";
 
+    unlink $self->fh->filename;
+    delete $self->{fh};
+}
+
+sub clean {
+    my $self = shift;
+    close $self->fh;
+    unlink $self->fh->filename;
     delete $self->{fh};
 }
 
@@ -463,7 +481,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
 
 =item retry_interval => 重试的间隔 
 
-重试的间隔, 默认为 3 s.
+重试的间隔, 默认为 10 s.
 
 =item max_retries => 最多重试的次数
 
