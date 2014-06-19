@@ -13,7 +13,7 @@ use File::Basename;
 use List::Util qw/shuffle/;
 use utf8;
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 has content_file => (
     is => 'ro',
@@ -120,7 +120,8 @@ sub get_file_length {
 
     my $fetch_len; $fetch_len = sub {
         my $retry = shift || 0;
-        my $ev; $ev = http_head $self->shuffle_url,
+        my $url = $self->shuffle_url;
+        my $ev; $ev = http_head $url,
             headers => $self->headers, 
             timeout => $self->timeout,
             recurse => $self->recurse,
@@ -128,7 +129,8 @@ sub get_file_length {
                 ($body, $hdr) = @_;
                 undef $ev;
                 if ($retry > $self->max_retries) {
-		            my $msg = sprintf("连接失败, 响应 %s, 内容 %s.", 
+		            my $msg = sprintf("连接地址 %s 失败, 响应 %s, 内容 %s.", 
+                        $url,
 			        	$hdr->{Status} ? $hdr->{Status} : '500', 
 			        	$body ? $body : "无"
 		            );
