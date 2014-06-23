@@ -13,7 +13,7 @@ use File::Basename;
 use List::Util qw/shuffle/;
 use utf8;
 
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 
 has content_file => (
     is => 'ro',
@@ -95,6 +95,9 @@ has url_status  => (
                         $_ => 0
                     } @{ $self->mirror }, $self->url;
         }
+        else {
+            $hash{$self->url} = 0;
+        }
         return \%hash;
     }
 );
@@ -145,6 +148,8 @@ sub multi_get_file  {
                     # 除了第一个块, 其它块现在开始下载
                     # 事件开始, 但这个回调会在最后才调用.
                     $first_task = shift @{ $self->tasks };
+                    return 1 if $len <= $self->seg_size;
+
                     for ( 1 .. $self->max_per_host ) {
                         my $chunk_task = shift @{ $self->tasks };
                         last unless defined $chunk_task;
@@ -158,11 +163,6 @@ sub multi_get_file  {
                 my ($partial_body, $hdr) = @_;
 
                 if ( $hdr->{Status} =~ /^2/ ) {
-                    if ( $first_task->{size} >= $self->seg_size) {
-		                 $cv->end;  # 完成第一个块
-                         undef $ev;
-                         return 0
-                    }
 
                     my $len = length($partial_body);
                     seek($self->fh, $first_task->{pos}, 0); 
@@ -171,6 +171,16 @@ sub multi_get_file  {
                     # 写完的记录
                     $first_task->{pos}   += $len;
                     $first_task->{size}  += $len;
+
+                    if ( ( $hdr->{'content-length'} <= $self->seg_size and  $first_task->{size} == $hdr->{'content-length'} )
+                            or 
+                            $first_task->{size} >= $self->seg_size
+                        ) {
+		                 $cv->end;  # 完成第一个块
+                         undef $ev;
+                         return 0
+                    }
+
                 }
                 return 1;
             },
