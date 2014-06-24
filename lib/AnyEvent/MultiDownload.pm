@@ -191,7 +191,6 @@ sub multi_get_file  {
                             else {
                                 $self->error("The 0 block the compared failure");
                                 $self->url_status->{$url}++;
-	                            $self->clean;
                                 $cv->send(1); # 失败, 结束整个请求
                                 AE::log debug => $self->error;
                                 return;
@@ -300,7 +299,6 @@ sub fetch_chunk {
                         $hdr->{Reason} ? $hdr->{Reason} : ' ',)
                 ) if !$self->error;
                 $self->url_status->{$url}++;
-	            $self->clean;
                 $cv->send(1);
                 return;
             }
@@ -326,7 +324,6 @@ sub fetch_chunk {
                             if (!$result) {
                                 $self->error("The $task->{chunk} block the compared failure");
                                 $self->url_status->{$url}++;
-	                            $self->clean;
                                 $cv->send(1); # 失败, 结束整个请求
                                 AE::log debug => $self->error;
                                 return;
@@ -370,7 +367,6 @@ sub fetch_chunk {
             }
             else {
                 # 直接失败
-		        $self->clean;
                 $cv->send(1);
                 return;
             }
