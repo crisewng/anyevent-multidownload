@@ -157,6 +157,8 @@ sub multi_get_file  {
                     # 除了第一个块, 其它块现在开始下载
                     # 事件开始, 但这个回调会在最后才调用.
                     $first_task = shift @{ $self->tasks };
+                    $first_task->{chunk} = $first_task->{chunk} || 0;
+                    $first_task->{ofs}   = $first_task->{ofs}   || 0;
                     return 1 if $len <= $self->seg_size;
 
                     for ( 1 .. $self->max_per_host ) {
@@ -177,9 +179,8 @@ sub multi_get_file  {
                             $first_task->{size} >= $self->seg_size
                         ) {
                         $self->on_seg_finish->( 
-                             '',
-                             0,
-                             $first_task->{size}, 
+                             $hdr,
+                             $first_task, 
                              $self->digest ? $first_task->{ctx}->hexdigest : '', 
                         sub {
 
@@ -315,8 +316,7 @@ sub fetch_chunk {
                     # 3. 大小相等, 块较检相等
                     $self->on_seg_finish->( 
                             $hdl, 
-                            $task->{chunk}, 
-                            $task->{size}, 
+                            $task, 
                             $self->digest ? $task->{ctx}->hexdigest : '', 
                         sub {
                             my ($result, $error) = @_;
@@ -427,19 +427,6 @@ sub split_range {
     }
 }
 
-sub get_chunk {
-  my ($self, $offset, $max) = @_; 
-  $max ||= 1024 * 1024;
-
-  my $handle = $self->fh;
-  $handle->sysseek($offset, SEEK_SET);
-
-  my $buffer;
-  $handle->sysread($buffer, $max); 
-
-  return $buffer;
-}
-
 sub move_to {
     my $self = shift;
 
@@ -502,7 +489,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
         content_file  => '/tmp/ubuntu.iso',
         seg_size => 1 * 1024 * 1024, # 1M
         on_seg_finish => sub {
-            my ($hdr, $chunk, $size, $md5, $cb) = @_;
+            my ($hdr, $chunk_obj, $md5, $cb) = @_;
             $cb->(1);
         },
         on_finish => sub {
@@ -573,7 +560,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
             content_file  => $content_file,
             seg_size => 1 * 1024 * 1024, # 1M
             on_seg_finish => sub {
-                my ($hdr, $chunk, $size, $md5, $cb) = @_;
+                my ($hdr, $chunk_obj, $md5, $cb) = @_;
                 $cb->(1);
             },
             on_finish => sub {
@@ -645,7 +632,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
 
 当每下载完 1M 时,会回调一次, 你可以用于检查你的下载每块的完整性, 这个时候只有 200 和 206 响应的时候才会回调.
 
-回调传四个参数, 本块下载时响应的 header, 当前是第几块, 下载块的大小, 检查的 md5 的结果, 最后一个参数为处理完后的回调. 这时如果回调为 1 证明检查结果正常, 如果为 0 证明检查失败, 会在次重新下载本块. 
+回调传四个参数, 本块下载时响应的 header, 当前块的信息的引用 ( 包含 chunk 第几块, size 下载块的大小, pos 块的开始位置 ), 检查的 md5 的结果, 最后一个参数为处理完后的回调. 这时如果回调为 1 证明检查结果正常, 如果为 0 证明检查失败, 会在次重新下载本块. 
 
 默认模块会帮助检查大小, 所以大小不用对比和检查了, 这个地方会根据 $self->digest 指定的信息, 给每块的 MD5 或者 SHA1 记录下来, 使用这个来对比. 本参数不是必须的. 如果没有这个回调默认检查大小正确.
 
