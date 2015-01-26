@@ -9,7 +9,7 @@ use AnyEvent::Digest;
 use List::Util qw/shuffle/;
 use AnyEvent::HTTP qw/http_get/;
 
-our $VERSION = '1.09';
+our $VERSION = '1.10';
 
 has path => (
     is => 'ro',
@@ -111,9 +111,6 @@ sub start  {
     my $self = shift;
     my $cb   = shift;
     
-    $self->cv->begin;
-    $self->first_request(0);
-
     $self->cv->cb(sub{
         my $cv = shift;
         my ($info, $hdr) = $cv->recv;
@@ -125,7 +122,10 @@ sub start  {
         }
         $self->fh->move_to($self->path);
         $self->on_finish->($self->fh->size);
-    })
+    });
+
+    $self->cv->begin;
+    $self->first_request(0);
 }
 
 
@@ -280,7 +280,8 @@ sub fetch_block {
             } 
 
             # 是否重试的流程
-            my $error  = sprintf("Block %s the size is wrong, expect the size: %s actual size: %s, The %s try again,  Status: %s, Reason: %s.", 
+            my $error  = sprintf(
+                "Block %s the size is wrong, expect the size: %s actual size: %s, The %s try again,  Status: %s, Reason: %s.", 
                 $task->{block},
                 $self->block_size,
                 $task->{size},
