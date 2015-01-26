@@ -108,8 +108,6 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
                 my $error = shift;
                 $cv->send;
             },
-    
-
     );
 
 - url => 下载的主地址
