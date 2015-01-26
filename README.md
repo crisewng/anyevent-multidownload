@@ -21,9 +21,9 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
     my $MultiDown = AnyEvent::MultiDownload->new( 
         url     => pop @urls, 
         mirror  => \@urls, 
-        content_file  => '/tmp/ubuntu.iso',
-        seg_size => 1 * 1024 * 1024, # 1M
-        on_seg_finish => sub {
+        path  => '/tmp/ubuntu.iso',
+        block_size => 1 * 1024 * 1024, # 1M
+        on_block_finish => sub {
             my ($hdr, $seg, $size, $chunk, $cb) = @_;
             $cb->(1);
         },
@@ -35,7 +35,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
             my $error = shift;
             $cv->send;
         }
-    )->multi_get_file;
+    )->start;
     
 
     $cv->recv;
@@ -64,7 +64,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
             $cv->end;
         }
     );
-    $MultiDown->multi_get_file;
+    $MultiDown->start;
     
 
     $cv->begin;
@@ -80,7 +80,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
             $cv->end;
         }
     );
-    $MultiDown1->multi_get_file;
+    $MultiDown1->start;
     
 
     $cv->recv;
@@ -95,8 +95,8 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
             url     => 'http://mirrors.163.com/ubuntu-releases/12.04/ubuntu-12.04.2-desktop-i386.iso', 
             mirror  => ['http://mirrors.163.com/ubuntu-releases/12.04/ubuntu-12.04.2-desktop-i386.iso', 'http://releases.ubuntu.com/12.04.2/ubuntu-12.04.2-desktop-i386.iso'],
             content_file  => $content_file,
-            seg_size => 1 * 1024 * 1024, # 1M
-            on_seg_finish => sub {
+            block_size => 1 * 1024 * 1024, # 1M
+            on_block_finish => sub {
                 my ($hdr, $seg_path, $size, $chunk,  $cb) = @_;
                 $cb->(1);
             },
@@ -127,8 +127,6 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
 - seg\_size => 下载块的大小
 
     默认这个 seg\_size 是指每次取块的大小,默认是 1M 一个块, 这个参数会给文件按照 1M 的大小来切成一个个块来下载并合并. 本参数不是必须的.
-
-
 
 - retry\_interval => 重试的间隔 
 
@@ -162,7 +160,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
 
     如果请求过程中有重定向, 可以最多重定向多少次.
 
-## multi\_get\_file()
+## start()
 
 事件开始的方法. 只有调用这个函数时, 这个下载的事件才开始执行.
 

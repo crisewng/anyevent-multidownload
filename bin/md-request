@@ -80,8 +80,7 @@ my $MultiDown = AnyEvent::MultiDownload->new(
     url     => shift @urls,
     mirror  => \@urls,
     headers => \%headers,
-    content_file => $dest || $filename,
-    seg_size  => 1 * 1024 * 1024, # 1M
+    path => $dest || $filename,
     max_per_host => $num_connections || 20,
     on_finish => sub {
         my $len = shift;
@@ -95,7 +94,7 @@ my $MultiDown = AnyEvent::MultiDownload->new(
         print STDERR "Transfer aborted, $error\n";
         $cv->send;
     }
-)->multi_get_file;
+)->start;
 
 $cv->recv;
 
