@@ -9,7 +9,7 @@ use AnyEvent::Digest;
 use List::Util qw/shuffle/;
 use AnyEvent::HTTP qw/http_get/;
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 has path => (
     is => 'ro',
@@ -114,10 +114,8 @@ sub start  {
     $self->cv->cb(sub{
         my $cv = shift;
         my ($info, $hdr) = $cv->recv;
-        $self->cv(undef);
         if ($info) {
             AE::log debug => $info;
-            $self->fh(undef);
             return $self->on_error->($info, $hdr);
         }
         $self->fh->move_to($self->path);
@@ -185,7 +183,7 @@ sub first_request {
             undef $ev;
             my $status = $hdr->{Status};
             # on_body 正常的下载
-            return if ( $hdr->{OrigStatus} and $hdr->{OrigStatus} == 200 ) or $hdr->{Status} == 200;
+            return if ( $hdr->{OrigStatus} and $hdr->{OrigStatus} == 200 ) or $hdr->{Status} == 200 or $hdr->{Status} == 416;
 
             if ( ($status == 500 or $status == 503 or $status =~ /^59/) and $retry < $self->max_retries ) {
                 my $w; $w = AE::timer( $self->retry_interval, 0, sub {
@@ -352,15 +350,6 @@ sub split_range {
     }
 }
 
-sub DESTROY {
-    my $self = shift;
-    $self->tasks(undef);
-    $self->task_lists(undef);
-    $self->fh(undef);
-    $self->cv(undef);
-}
-
-
 1;
 
 __END__
@@ -383,8 +372,8 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
     use AnyEvent::MultiDownload;
 
     my @urls = (
-        'http://mirrors.163.com/ubuntu-releases/12.04/ubuntu-12.04.2-desktop-i386.iso',
-        'http://releases.ubuntu.com/12.04.2/ubuntu-12.04.2-desktop-i386.iso',
+        'http://mirrors.163.com/centos/7/isos/x86_64/CentOS-7.0-1406-x86_64-DVD.iso',
+        'http://mirrors.sohu.com/centos/7/isos/x86_64/CentOS-7.0-1406-x86_64-DVD.iso',
     );
     
     my $cv = AE::cv;
@@ -394,15 +383,18 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
         path  => '/tmp/ubuntu.iso',
         block_size => 1 * 1024 * 1024, # 1M
         on_block_finish => sub {
-            my ($hdr, $block_obj, $md5, $cb) = @_;
-            $cb->(1);
+            my ($hdr, $block_obj, $md5) = @_;
+            if ($md5 eq $src_md5) {
+                return 1;
+            }
+            0
         },
         on_finish => sub {
             my $len = shift;
             $cv->send;
         },
         on_error => sub {
-            my $error = shift;
+            my ($error, $hdr) = @_;
             $cv->send;
         }
     )->start;
@@ -419,14 +411,14 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
     
     $cv->begin;
     my $MultiDown = AnyEvent::MultiDownload->new( 
-        url     => 'http://xxx1',
+        url     => 'http://xxx/file1',
         path  => "/tmp/file2",
         on_finish => sub {
             my $len = shift;
             $cv->end;
         },
         on_error => sub {
-            my $error = shift;
+            my ($error, $hdr) = @_;
             $cv->end;
         }
     );
@@ -434,14 +426,14 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
     
     $cv->begin;
     my $MultiDown1 = AnyEvent::MultiDownload->new( 
+        url     => 'http://xxx/file2', 
         path  => "/tmp/file1",
-        url     => 'http://xxx', 
         on_finish => sub {
             my $len = shift;
             $cv->end;
         },
         on_error => sub {
-            my $error = shift;
+            my ($error, $hdr) = @_;
             $cv->end;
         }
     );
@@ -449,95 +441,75 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
     
     $cv->recv;
 
-以上是同时下载多个文件的实例.
+以上是同时下载多个文件的实例. 这个过程有其它的事件并不会阻塞.
 
-=head1 METHODS
+=head1 属性
 
-创建一个多下载的对象.
+=head2 url 
 
-    my @urls = (
-        'http://mirrors.163.com/ubuntu-releases/12.04/ubuntu-12.04.2-desktop-i386.iso',
-        'http://releases.ubuntu.com/12.04.2/ubuntu-12.04.2-desktop-i386.iso',
-    );
-    my $MultiDown = AnyEvent::MultiDownload->new( 
-            url     => shift @urls, 
-            mirror  => \@urls, 
-            path  => $path,
-            block_size => 1 * 1024 * 1024, # 1M
-            on_block_finish => sub {
-                my ($hdr, $block_obj, $md5, $cb) = @_;
-                $cb->(1);
-            },
-            on_finish => sub {
-                my $len = shift;
-                $cv->send;
-            },
-            on_error => sub {
-                my $error = shift;
-                $cv->send;
-            },
-    
-    );
+下载的主地址, 这个是下载用的 master 的地址, 是主地址, 这个参数必须有.
 
-=over 8
+=head2 path 
 
-=item url => 下载的主地址
+下载后的存放地址, 这个地址用于指定, 下载完了, 存放在什么位置. 这个参数必须有.
 
-这个是下载用的 master 的地址, 是主地址, 这个参数必须有.
+=head2 mirror
 
-=item path => 下载后的存放地址
+文件下载的镜象地址, 这个是可以用来做备用地址和分块下载时用的地址. 需要一个数组引用, 其中放入这个文件的其它用于下载的地址. 如果块下载失败会自动切换成其它的地址下载. 本参数不是必须的.
 
-这个地址用于指定, 下载完了, 存放在什么位置. 这个参数必须有.
+=head2 block_size 
 
-=item mirror => 镜象地址
+下载块的大小, 默认这个 block_size 是指每次取块的大小, 默认是 1M 一个块, 这个参数会给文件按照 1M 的大小来切成一个个块来下载并合并. 本参数不是必须的.
 
-这个是可以用来做备用地址和分块下载时用的地址. 需要一个数组引用, 其中放入这个文件的其它用于下载的地址. 如果块下载失败会自动切换成其它的地址下载. 本参数不是必须的.
-
-=item block_size => 下载块的大小
-
-默认这个 block_size 是指每次取块的大小, 默认是 1M 一个块, 这个参数会给文件按照 1M 的大小来切成一个个块来下载并合并. 本参数不是必须的.
-
-=item digest
+=head2 digest
 
 用于指定所使用的块较检所使用的模块, 支持 Digest::MD5 和 Digest::SHA1
 
-=item retry_interval => 重试的间隔 
+=head2 retry_interval 
 
 重试的间隔, 默认为 10 s.
 
-=item max_retries => 最多重试的次数
+=head2 max_retries 
 
 重试每个块所能重试的次数, 默认为 3 次.
 
-=item max_per_host => 每个主机最多的连接数量
+=head2 max_per_host 
 
-目前模块没有开发总连接数控制, 主要原因是.多线路为了快,所以控制单个主机的并发比控制总体好. 默认为 8. 并且一个 url 最多这么多请求.
+每个文件最多发出去的连接数量.
 
-=item headers => 自定义的 header
+=head2 headers 
 
 如果你想自己定义传送的 header , 就在这个参数中加就好了, 默认是一个哈希引用.
 
-=item timeout
+=head2 timeout
 
 下载多久算超时, 可选参数, 默认为 10s.
 
-=item recurse 重定向
+=head2 recurse 重定向
 
 如果请求过程中有重定向, 可以最多重定向多少次.
 
-=back
+=head2 content_file DEPRECATED
+
+这个属性被替换成 path
+
+=head1 METHODS
 
 =head2 start()
 
 事件开始的方法. 只有调用这个函数时, 这个下载的事件才开始执行.
 
-=head1 callback
+=head2 multi_get_file() DEPRECATED
+
+这个方式替换成 start 了
+
+=head1 回调
 
 =head2 on_block_finish
 
-当每下载完 1M 时,会回调一次, 你可以用于检查你的下载每块的完整性, 这个时候只有 200 和 206 响应的时候才会回调.
+当每下载完 1M 时, 会回调一次, 你可以用于检查你的下载每块的完整性, 这个时候只有 200 和 206 响应的时候才会回调.
 
-回调传四个参数, 本块下载时响应的 header, 当前块的信息的引用 ( 包含 block 第几块, size 下载块的大小, pos 块的开始位置 ), 检查的 md5 的结果, 最后一个参数为处理完后的回调. 这时如果回调为 1 证明检查结果正常, 如果为 0 证明检查失败, 会在次重新下载本块. 
+回调传四个参数, 本块下载时响应的 header, 当前块的信息的引用 ( 包含 block 第几块, size 下载块的大小, pos 块的开始位置 ), 检查的 md5 或者 sha1 的结果. 这个需要返回值, 如果值为 1 证明检查结果正常, 如果为 0 证明检查失败. 
 
 默认模块会帮助检查大小, 所以大小不用对比和检查了, 这个地方会根据 $self->digest 指定的信息, 给每块的 MD5 或者 SHA1 记录下来, 使用这个来对比. 本参数不是必须的. 如果没有这个回调默认检查大小正确.
 
@@ -549,6 +521,13 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
 
 当整个文件下载过程出错时回调, 这个参数必须存在, 因为不能保证每次下载都能正常.
 
+=head2 on_seg_finish DEPRECATED
+
+这个回调被替换成 on_block_finish 回调了.
+
+=head1 SEE ALSO
+
+L<AnyEvent>, L<AnyEvent::HTTP>, L<App::ManiacDownloader>.
 
 =head1 AUTHOR
 
