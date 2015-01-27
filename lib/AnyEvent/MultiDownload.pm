@@ -228,11 +228,11 @@ sub on_body {
         $self->fh->start_range($task->{pos});
         $self->fh->add_chunk($partial_body);
 
-        # 写完的记录
         if ( $self->digest ) {
             $task->{ctx} ||= AnyEvent::Digest->new($self->digest);
             $task->{ctx}->add_async($partial_body);
         }
+
         $task->{pos}   += $len;
         $task->{size}  += $len;
         return 1;
@@ -441,7 +441,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
     
     $cv->recv;
 
-以上是同时下载多个文件的实例. 这个过程有其它的事件并不会阻塞.
+以上是同时下载多个文件的实例. 这个过程有其它的事件并不会阻塞. 所以同时文件都会开始下载，并且这时可以执行其它的事件.
 
 =head1 属性
 
