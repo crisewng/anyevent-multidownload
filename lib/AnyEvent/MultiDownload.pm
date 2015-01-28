@@ -130,6 +130,7 @@ sub start  {
 sub first_request {
     my ($self, $retry) = @_;
     my $url = $self->shuffle_url;
+
     my $first_task;
     my $ev; $ev = http_get $url,
         headers     => $self->headers, 
@@ -383,7 +384,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
         path  => '/tmp/ubuntu.iso',
         block_size => 1 * 1024 * 1024, # 1M
         on_block_finish => sub {
-            my ($hdr, $block_obj, $md5) = @_;
+            my ($hdr, $block_ref, $md5) = @_;
             if ($md5 eq $src_md5) {
                 return 1;
             }
@@ -509,7 +510,7 @@ AnyEvent::MultiDownload - 非阻塞的多线程多地址文件下载的模块
 
 当每下载完 1M 时, 会回调一次, 你可以用于检查你的下载每块的完整性, 这个时候只有 200 和 206 响应的时候才会回调.
 
-回调传四个参数, 本块下载时响应的 header, 当前块的信息的引用 ( 包含 block 第几块, size 下载块的大小, pos 块的开始位置 ), 检查的 md5 或者 sha1 的结果. 这个需要返回值, 如果值为 1 证明检查结果正常, 如果为 0 证明检查失败. 
+回调传四个参数, 本块下载时响应的 header, 当前块的信息的引用 ( 包含 block 第几块, size 下载块的大小, pos 块的开始位置, 检查的 md5 或者 sha1 的结果 ). 这个需要返回值, 如果值为 1 证明检查结果正常, 如果为 0 证明检查失败. 
 
 默认模块会帮助检查大小, 所以大小不用对比和检查了, 这个地方会根据 $self->digest 指定的信息, 给每块的 MD5 或者 SHA1 记录下来, 使用这个来对比. 本参数不是必须的. 如果没有这个回调默认检查大小正确.
 

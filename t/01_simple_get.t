@@ -1,8 +1,7 @@
 use strict;
 use Test::More;
-use File::Temp;
-use Smart::Comments;
-use lib './lib';
+use Asset::File;
+use AnyEvent::MultiDownload;
 
 BEGIN {
     eval q{ require Test::TCP } or plan skip_all => 'Could not require Test::TCP';
@@ -96,13 +95,13 @@ Test::TCP::test_tcp(
         {
             use AE;
             use AnyEvent::MultiDownload;
-            use Smart::Comments;
+            my $path = '/tmp/multidownload.tmp';
              
-            unlink '/tmp/multidownload.tmp';
+            unlink $path;
             my $cv = AE::cv;
             my $MultiDown = AnyEvent::MultiDownload->new(
                 url   => "http://localhost:$port/",
-                path  => '/tmp/multidownload.tmp',
+                path  => $path, 
                 digest => "Digest::MD5",
                 block_size => 1 * 1024, # 1k
                 on_block_finish => sub {
@@ -121,8 +120,12 @@ Test::TCP::test_tcp(
                     $cv->send;
                 }
             )->start;
-             
             $cv->recv;
+
+            ok -s $path, "file exist";
+            my $asset = Asset::File->new(path => $path );
+            is $asset->md5sum, 'a4f2b77f836d654db22c14bdbf603038', "file md5";
+            unlink $path;
         }
     },
 );
