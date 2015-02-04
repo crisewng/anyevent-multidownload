@@ -9,7 +9,7 @@ use AnyEvent::Digest;
 use List::Util qw/shuffle/;
 use AnyEvent::HTTP qw/http_get/;
 
-our $VERSION = '1.11';
+our $VERSION = '1.12';
 
 has path => (
     is => 'ro',
@@ -140,7 +140,8 @@ sub first_request {
             my ($hdr) = @_;
             if ( $hdr->{Status} == 200 ) {
                 my $len = $hdr->{'content-length'};
-                return $self->cv->send(("Cannot find a content-length header.", $hdr)) if !defined($len);
+                return $self->cv->send(("Cannot find a content-length header.", $hdr)) 
+                    if !defined($len) or $len <= 0;
 
                 # 准备开始下载的信息
                 my $ranges = $self->split_range($len);
