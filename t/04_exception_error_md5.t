@@ -76,7 +76,7 @@ BEGIN {
 my @md5_list = ( 
     'c9a34cfc85d982698c6ac89f76071abd',
     'bbe6402cdc9b7e2036fc97e9a91726cd',
-    '2363e5e6343a2f2afd1e0c733f2b10f4',
+    '2363e5e6343a2f2afd1e0c733f2b10f1',
     '6451d26b2442429e7d9f7f472f6fae8d',
     'ced8f043d5a2d74811d2345f6324e06d',
     '6abe902730178d76716023af0b3202df',
@@ -106,26 +106,19 @@ Test::TCP::test_tcp(
                 block_size => 1 * 1024, # 1k
                 on_block_finish => sub {
                     my ($hdr, $block_ref, $md5) = @_;
-                    is $block_ref->{size}, 1024, "block size";
-                    is $md5, $md5_list[$block_ref->{block}], $block_ref->{block} ." block md5";
                     $md5 eq $md5_list[$block_ref->{block}];
                 },
                 on_finish => sub {
                     my $len = shift;
-                    is $len, 8192, "file length";
                     $cv->send;
                 },
                 on_error => sub {
                     my $error = shift;
+                    is $error, 'The 2 block the compared failure', "error md5";
                     $cv->send;
                 }
             )->start;
             $cv->recv;
-
-            ok -s $path, "file exist";
-            my $asset = Asset::File->new(path => $path );
-            is $asset->md5sum, 'a4f2b77f836d654db22c14bdbf603038', "file md5";
-            unlink $path;
         }
     },
 );

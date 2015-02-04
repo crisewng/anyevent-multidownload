@@ -9,7 +9,7 @@ use AnyEvent::Digest;
 use List::Util qw/shuffle/;
 use AnyEvent::HTTP qw/http_get/;
 
-our $VERSION = '1.12';
+our $VERSION = '1.13';
 
 has path => (
     is => 'ro',
@@ -114,11 +114,19 @@ sub start  {
     $self->cv->cb(sub{
         my $cv = shift;
         my ($info, $hdr) = $cv->recv;
+        # 出错的回调
         if ($info) {
             AE::log debug => $info;
             return $self->on_error->($info, $hdr);
         }
-        $self->fh->move_to($self->path);
+        # 移文件
+        eval {
+            $self->fh->move_to($self->path);
+        };
+        if ($@) {
+            AE::log debug => $@;
+            return $self->on_error->("$@", []);
+        }
         $self->on_finish->($self->fh->size);
     });
 
