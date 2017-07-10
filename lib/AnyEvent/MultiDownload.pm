@@ -8,6 +8,7 @@ use Asset::File;
 use AnyEvent::Digest;
 use List::Util qw/shuffle/;
 use AnyEvent::HTTP qw/http_get/;
+use Net::DNS::Native;
 
 our $VERSION = '1.13';
 
@@ -78,6 +79,12 @@ has fh       => (
         return Asset::File->new;
     },
 );
+
+has suffix => (
+    is => 'rw',
+    default => '.tmp',
+);
+
 
 has retry_interval => is => 'rw', default => sub { 10 };
 has max_retries    => is => 'rw', default => sub { 3 };
@@ -234,8 +241,9 @@ sub on_body {
             $partial_body = substr($partial_body, 0, $spsize);
             $len = $spsize; 
         }
-
+        
         $self->fh->start_range($task->{pos});
+        $self->fh->path($self->path . $self->suffix);
         $self->fh->add_chunk($partial_body);
 
         if ( $self->digest ) {
