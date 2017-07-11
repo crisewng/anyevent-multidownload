@@ -80,11 +80,9 @@ has fh       => (
     },
 );
 
-has suffix => (
+has docroot => (
     is => 'rw',
-    default => '.tmp',
 );
-
 
 has retry_interval => is => 'rw', default => sub { 10 };
 has max_retries    => is => 'rw', default => sub { 3 };
@@ -241,20 +239,12 @@ sub on_body {
             $partial_body = substr($partial_body, 0, $spsize);
             $len = $spsize; 
         }
-
-        my $dir  = File::Basename::dirname( $self->path . $self->suffix );
-        if (! -e $dir ) {
-            if (! File::Path::make_path( $dir ) || ! -d $dir ) {
-                my $e = $!;
-                        
-            }
-                
-        }
         
         $self->fh->start_range($task->{pos});
-        $self->fh->path($self->path . $self->suffix);
-        $self->fh->add_chunk($partial_body);
-
+        $self->fh->dir($self->docroot);
+        $self->fh->template("XXXXX");
+        $self->fh->add_chunk(docroot);
+   
         if ( $self->digest ) {
             $task->{ctx} ||= AnyEvent::Digest->new($self->digest);
             $task->{ctx}->add_async($partial_body);
